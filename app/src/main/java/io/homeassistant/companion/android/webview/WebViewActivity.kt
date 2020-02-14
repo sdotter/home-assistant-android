@@ -3,23 +3,17 @@ package io.homeassistant.companion.android.webview
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.MenuInflater
 import android.view.View
-import android.webkit.HttpAuthHandler
-import android.webkit.JavascriptInterface
-import android.webkit.JsResult
-import android.webkit.PermissionRequest
-import android.webkit.SslErrorHandler
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
+import android.webkit.*
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -64,6 +58,9 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_webview)
 
+        if (Build.VERSION.SDK_INT >= 21)
+            getWindow().setNavigationBarColor(getResources().getColor(R.color.navigationBarColor));
+
         DaggerPresenterComponent
             .builder()
             .appComponent((application as GraphComponentAccessor).appComponent)
@@ -85,16 +82,52 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             webViewClient = object : WebViewClient() {
+
+                var timeout = true
+
+                override fun onPageStarted(
+                    view: WebView?,
+                    url: String?,
+                    favicon: Bitmap?
+                ) {
+                    val run = Runnable {
+                        if (timeout) { // do what you want
+                            timeout = false
+                            view?.loadUrl("file:///android_asset/404.html")
+                        }
+                    }
+                    val myHandler = Handler(Looper.myLooper())
+                    myHandler.postDelayed(run, 3000)
+                }
+
+                override fun onPageFinished(
+                    view: WebView?,
+                    url: String?
+                ) {
+                    timeout = false
+                }
+
                 override fun onReceivedError(
                     view: WebView?,
                     errorCode: Int,
                     description: String?,
                     failingUrl: String?
                 ) {
-                    Log.e(TAG, "onReceivedHttpError: errorCode: $errorCode url:$failingUrl")
-                    if (failingUrl == loadedUrl) {
-                        showError()
+                    try {
+                        view?.stopLoading()
+                    } catch (e: Exception) {
                     }
+                    try {
+                        view?.clearView()
+                    } catch (e: Exception) {
+                    }
+                    /*if (view.canGoBack()) {
+                        view.goBack()
+                    }*/
+
+                    view?.loadUrl("file:///android_asset/404.html")
+
+                    super.onReceivedError(view, errorCode, description, failingUrl)
                 }
 
                 override fun onReceivedHttpError(
@@ -139,6 +172,12 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
                     }
                     return false
                 }
+            }
+
+            if (Build.VERSION.SDK_INT >= 21) {
+                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+            } else {
+                CookieManager.getInstance().setAcceptCookie(true);
             }
 
             webChromeClient = object : WebChromeClient() {
@@ -314,7 +353,7 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
     }
 
     override fun setStatusBarColor(color: Int) {
-        window.statusBarColor = color
+        //window.statusBarColor = color
     }
 
     override fun setExternalAuth(script: String) {
@@ -333,7 +372,9 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
             return
         isShowingError = true
 
-        AlertDialog.Builder(this)
+        webView.loadUrl("file:///android_asset/404.html")
+
+        /*AlertDialog.Builder(this)
             .setTitle(R.string.error_connection_failed)
             .setMessage(if (isAuthenticationError) R.string.error_auth_revoked else R.string.webview_error)
             .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -345,7 +386,7 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
                 }
             }
             .setOnDismissListener { isShowingError = false }
-            .show()
+            .show()*/
     }
 
     override fun authenticationDialog(handler: HttpAuthHandler) {
