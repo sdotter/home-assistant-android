@@ -26,12 +26,18 @@ import io.homeassistant.companion.android.PresenterModule
 import io.homeassistant.companion.android.R
 import io.homeassistant.companion.android.background.LocationBroadcastReceiver
 import io.homeassistant.companion.android.common.dagger.GraphComponentAccessor
+import io.homeassistant.companion.android.domain.authentication.AuthenticationUseCase
+import io.homeassistant.companion.android.domain.integration.IntegrationUseCase
+import io.homeassistant.companion.android.domain.url.UrlUseCase
 import io.homeassistant.companion.android.onboarding.OnboardingActivity
 import io.homeassistant.companion.android.sensors.SensorWorker
 import io.homeassistant.companion.android.settings.SettingsActivity
 import io.homeassistant.companion.android.util.PermissionManager
+import kotlinx.android.synthetic.main.activity_webview.view.*
+import kotlinx.coroutines.*
 import javax.inject.Inject
 import org.json.JSONObject
+import java.lang.Runnable
 
 class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.webview.WebView {
 
@@ -47,11 +53,14 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
 
     @Inject
     lateinit var presenter: WebViewPresenter
+    lateinit var urlUseCase: UrlUseCase
     private lateinit var webView: WebView
     private lateinit var loadedUrl: String
 
     private var isConnected = false
     private var isShowingError = false
+    private var doClearHistory = false
+    private var doClearResources = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,9 +90,19 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
         webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+
             webViewClient = object : WebViewClient() {
 
                 var timeout = true
+
+                override fun onLoadResource(view: WebView?, url: String?) {
+                    if (doClearResources) {
+                        view?.clearHistory()
+                        doClearResources = false
+                    }
+
+                    super.onLoadResource(view, url)
+                }
 
                 override fun onPageStarted(
                     view: WebView?,
@@ -91,7 +110,7 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
                     favicon: Bitmap?
                 ) {
                     val run = Runnable {
-                        if (timeout) { // do what you want
+                        if (timeout) {
                             timeout = false
                             view?.loadUrl("file:///android_asset/404.html")
                         }
@@ -105,6 +124,10 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
                     url: String?
                 ) {
                     timeout = false
+                    if (doClearHistory) {
+                        view?.clearHistory();
+                        doClearHistory = false
+                    }
                 }
 
                 override fun onReceivedError(
@@ -121,11 +144,8 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
                         view?.clearView()
                     } catch (e: Exception) {
                     }
-                    /*if (view.canGoBack()) {
-                        view.goBack()
-                    }*/
 
-                    view?.loadUrl("file:///android_asset/404.html")
+                    webView.loadUrl("file:///android_asset/404.html")
 
                     super.onReceivedError(view, errorCode, description, failingUrl)
                 }
@@ -252,6 +272,15 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
                 }
 
                 @JavascriptInterface
+                fun tryReload() {
+                    doClearHistory = true;
+                    doClearResources = true;
+                    presenter.tryReload()
+
+                    Toast.makeText(applicationContext, "Trying to reconnect...", Toast.LENGTH_SHORT).show()
+                }
+
+                @JavascriptInterface
                 fun externalBus(message: String) {
                     Log.d(TAG, "External bus $message")
                     webView.post {
@@ -349,7 +378,7 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
             if (!isConnected) {
                 showError()
             }
-        }, 5000)
+        }, 1000)
     }
 
     override fun setStatusBarColor(color: Int) {
@@ -371,6 +400,15 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
         if (isShowingError || isFinishing)
             return
         isShowingError = true
+
+        try {
+            webView.stopLoading()
+        } catch (e: Exception) {
+        }
+        try {
+            webView.clearView()
+        } catch (e: Exception) {
+        }
 
         webView.loadUrl("file:///android_asset/404.html")
 

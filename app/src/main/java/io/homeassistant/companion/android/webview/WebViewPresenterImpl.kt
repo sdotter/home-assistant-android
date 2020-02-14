@@ -7,14 +7,9 @@ import io.homeassistant.companion.android.domain.authentication.AuthenticationUs
 import io.homeassistant.companion.android.domain.authentication.SessionState
 import io.homeassistant.companion.android.domain.integration.IntegrationUseCase
 import io.homeassistant.companion.android.domain.url.UrlUseCase
+import kotlinx.coroutines.*
 import java.net.URL
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class WebViewPresenterImpl @Inject constructor(
     private val view: WebView,
@@ -95,6 +90,19 @@ class WebViewPresenterImpl @Inject constructor(
     override fun isFullScreen(): Boolean {
         return runBlocking {
             integrationUseCase.isFullScreenEnabled()
+        }
+    }
+
+    override fun tryReload() {
+        mainScope.launch {
+            url = urlUseCase.getUrl()
+            view.loadUrl(
+                Uri.parse(url.toString())
+                    .buildUpon()
+                    .appendQueryParameter("external_auth", "1")
+                    .build()
+                    .toString()
+            )
         }
     }
 

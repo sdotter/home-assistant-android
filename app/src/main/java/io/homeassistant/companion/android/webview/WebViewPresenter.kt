@@ -12,5 +12,7 @@ interface WebViewPresenter {
 
     fun isFullScreen(): Boolean
 
+    fun tryReload()
+
     fun onFinish()
 }
