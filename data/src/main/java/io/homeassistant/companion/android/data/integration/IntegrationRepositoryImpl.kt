@@ -13,6 +13,7 @@ import io.homeassistant.companion.android.domain.authentication.AuthenticationRe
 import io.homeassistant.companion.android.domain.integration.DeviceRegistration
 import io.homeassistant.companion.android.domain.integration.Entity
 import io.homeassistant.companion.android.domain.integration.IntegrationRepository
+import io.homeassistant.companion.android.domain.integration.Panel
 import io.homeassistant.companion.android.domain.integration.Sensor
 import io.homeassistant.companion.android.domain.integration.SensorRegistration
 import io.homeassistant.companion.android.domain.integration.Service
@@ -49,6 +50,8 @@ class IntegrationRepositoryImpl @Inject constructor(
         private const val PREF_ZONE_ENABLED = "zone_enabled"
         private const val PREF_BACKGROUND_ENABLED = "background_enabled"
         private const val PREF_FULLSCREEN_ENABLED = "fullscreen_enabled"
+        private const val PREF_SESSION_TIMEOUT = "session_timeout"
+        private const val PREF_SESSION_EXPIRE = "session_expire"
         private const val PREF_SENSORS_REGISTERED = "sensors_registered"
     }
 
@@ -174,7 +177,10 @@ class IntegrationRepositoryImpl @Inject constructor(
     override suspend fun fireEvent(eventType: String, eventData: Map<String, Any>) {
         var wasSuccess = false
 
-        val fireEventRequest = FireEventRequest(eventType, eventData)
+        val fireEventRequest = FireEventRequest(
+            eventType,
+            eventData.plus(Pair("device_id", deviceId))
+        )
 
         for (it in urlRepository.getApiUrls()) {
             try {
@@ -243,6 +249,22 @@ class IntegrationRepositoryImpl @Inject constructor(
         return localStorage.getBoolean(PREF_FULLSCREEN_ENABLED)
     }
 
+    override suspend fun sessionTimeOut(value: Int) {
+        localStorage.putInt(PREF_SESSION_TIMEOUT, value)
+    }
+
+    override suspend fun getSessionTimeOut(): Int {
+        return localStorage.getInt(PREF_SESSION_TIMEOUT) ?: 0
+    }
+
+    override suspend fun setSessionExpireMillis(value: Long) {
+        localStorage.putLong(PREF_SESSION_EXPIRE, value)
+    }
+
+    override suspend fun getSessionExpireMillis(): Long {
+        return localStorage.getLong(PREF_SESSION_EXPIRE) ?: 0
+    }
+
     override suspend fun getThemeColor(): String {
         val getConfigRequest =
             IntegrationRequest(
@@ -262,6 +284,11 @@ class IntegrationRepositoryImpl @Inject constructor(
         }
 
         throw IntegrationException()
+    }
+
+    // TODO: Use websocket to get panels.
+    override suspend fun getPanels(): Array<Panel> {
+        return arrayOf()
     }
 
     override suspend fun getServices(): Array<Service> {
@@ -327,7 +354,7 @@ class IntegrationRepositoryImpl @Inject constructor(
         throw IntegrationException()
     }
 
-    override suspend fun updateSensors(sensors: Array<Sensor<Any>>) {
+    override suspend fun updateSensors(sensors: Array<Sensor<Any>>): Boolean {
         val integrationRequest = IntegrationRequest(
             "update_sensor_states",
             sensors.map {
@@ -343,9 +370,13 @@ class IntegrationRepositoryImpl @Inject constructor(
         for (it in urlRepository.getApiUrls()) {
             try {
                 integrationService.updateSensors(it.toHttpUrlOrNull()!!, integrationRequest).let {
-                    if (it.isSuccessful) {
-                        return
+                    it.forEach { (_, response) ->
+                        if (response["success"] == false) {
+                            localStorage.putStringSet(PREF_SENSORS_REGISTERED, setOf())
+                            return false
+                        }
                     }
+                    return true
                 }
             } catch (e: Exception) {
                 // Ignore failure until we are out of URLS to try!
@@ -356,6 +387,15 @@ class IntegrationRepositoryImpl @Inject constructor(
 
     private suspend fun createUpdateRegistrationRequest(deviceRegistration: DeviceRegistration): RegisterDeviceRequest {
         val oldDeviceRegistration = getRegistration()
+        val pushToken = deviceRegistration.pushToken ?: oldDeviceRegistration.pushToken
+        val appData = if (pushToken == null) {
+            null
+        } else {
+            hashMapOf(
+                "push_url" to PUSH_URL,
+                "push_token" to pushToken
+            )
+        }
         return RegisterDeviceRequest(
             null,
             null,
@@ -366,11 +406,7 @@ class IntegrationRepositoryImpl @Inject constructor(
             null,
             osVersion,
             null,
-            hashMapOf(
-                "push_url" to PUSH_URL,
-                "push_token" to (deviceRegistration.pushToken ?: oldDeviceRegistration.pushToken
-                ?: "")
-            ),
+            appData,
             null
         )
     }
@@ -382,7 +418,6 @@ class IntegrationRepositoryImpl @Inject constructor(
                 updateLocation.locationName,
                 updateLocation.gps,
                 updateLocation.gpsAccuracy,
-                updateLocation.battery,
                 updateLocation.speed,
                 updateLocation.altitude,
                 updateLocation.course,

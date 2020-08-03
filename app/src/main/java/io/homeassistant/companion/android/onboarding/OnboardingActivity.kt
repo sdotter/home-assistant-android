@@ -3,10 +3,7 @@ package io.homeassistant.companion.android.onboarding
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.MenuInflater
 import androidx.appcompat.app.AppCompatActivity
-import com.lokalise.sdk.LokaliseContextWrapper
-import com.lokalise.sdk.menu_inflater.LokaliseMenuInflater
 import io.homeassistant.companion.android.R
 import io.homeassistant.companion.android.onboarding.authentication.AuthenticationFragment
 import io.homeassistant.companion.android.onboarding.authentication.AuthenticationListener
@@ -16,7 +13,6 @@ import io.homeassistant.companion.android.onboarding.integration.MobileAppIntegr
 import io.homeassistant.companion.android.onboarding.integration.MobileAppIntegrationListener
 import io.homeassistant.companion.android.onboarding.manual.ManualSetupFragment
 import io.homeassistant.companion.android.onboarding.manual.ManualSetupListener
-import io.homeassistant.companion.android.sensors.SensorWorker
 import io.homeassistant.companion.android.webview.WebViewActivity
 
 class OnboardingActivity : AppCompatActivity(), DiscoveryListener, ManualSetupListener,
@@ -38,14 +34,18 @@ class OnboardingActivity : AppCompatActivity(), DiscoveryListener, ManualSetupLi
         val sessionConnected = intent.extras?.getBoolean(SESSION_CONNECTED) ?: false
 
         if (sessionConnected) {
+            val mobileAppIntegrationFragment = MobileAppIntegrationFragment.newInstance()
+            mobileAppIntegrationFragment.retainInstance = true
             supportFragmentManager
                 .beginTransaction()
-                .add(R.id.content, MobileAppIntegrationFragment.newInstance())
+                .add(R.id.content, mobileAppIntegrationFragment)
                 .commit()
         } else {
+            val discoveryFragment = DiscoveryFragment.newInstance()
+            discoveryFragment.retainInstance = true
             supportFragmentManager
                 .beginTransaction()
-                .add(R.id.content, DiscoveryFragment.newInstance())
+                .add(R.id.content, discoveryFragment)
                 .commit()
         }
     }
@@ -59,47 +59,46 @@ class OnboardingActivity : AppCompatActivity(), DiscoveryListener, ManualSetupLi
     }
 
     override fun onSelectManualSetup() {
+        val manualSetupFragment = ManualSetupFragment.newInstance()
+        manualSetupFragment.retainInstance = true
         supportFragmentManager
             .beginTransaction()
-            .replace(R.id.content, ManualSetupFragment.newInstance())
+            .replace(R.id.content, manualSetupFragment)
             .addToBackStack(null)
             .commit()
     }
 
     override fun onHomeAssistantDiscover() {
+        val authenticationFragment = AuthenticationFragment.newInstance()
+        authenticationFragment.retainInstance = true
         supportFragmentManager
             .beginTransaction()
-            .replace(R.id.content, AuthenticationFragment.newInstance())
+            .replace(R.id.content, authenticationFragment)
             .addToBackStack(null)
             .commit()
     }
 
     override fun onSelectUrl() {
+        val authenticationFragment = AuthenticationFragment.newInstance()
+        authenticationFragment.retainInstance = true
         supportFragmentManager
             .beginTransaction()
-            .replace(R.id.content, AuthenticationFragment.newInstance())
+            .replace(R.id.content, authenticationFragment)
             .addToBackStack(null)
             .commit()
     }
 
     override fun onAuthenticationSuccess() {
+        val mobileAppIntegrationFragment = MobileAppIntegrationFragment.newInstance()
+        mobileAppIntegrationFragment.retainInstance = true
         supportFragmentManager
             .beginTransaction()
-            .replace(R.id.content, MobileAppIntegrationFragment.newInstance())
+            .replace(R.id.content, mobileAppIntegrationFragment)
             .commit()
     }
 
     override fun onIntegrationRegistrationComplete() {
-        SensorWorker.start(applicationContext)
         startWebView()
-    }
-
-    override fun attachBaseContext(newBase: Context) {
-        super.attachBaseContext(LokaliseContextWrapper.wrap(newBase))
-    }
-
-    override fun getMenuInflater(): MenuInflater {
-        return LokaliseMenuInflater(this)
     }
 
     private fun startWebView() {

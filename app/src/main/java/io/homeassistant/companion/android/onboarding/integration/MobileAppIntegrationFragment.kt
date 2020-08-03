@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ViewFlipper
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.SwitchCompat
@@ -22,6 +23,7 @@ import io.homeassistant.companion.android.R
 import io.homeassistant.companion.android.common.dagger.GraphComponentAccessor
 import io.homeassistant.companion.android.util.PermissionManager
 import javax.inject.Inject
+import kotlinx.android.synthetic.main.fragment_mobile_app_integration.*
 
 class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
 
@@ -65,7 +67,7 @@ class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
         return inflater.inflate(R.layout.fragment_mobile_app_integration, container, false).apply {
             viewFlipper = this.findViewById(R.id.view_flipper)
             findViewById<Button>(R.id.retry).setOnClickListener {
-                presenter.onRegistrationAttempt()
+                presenter.onRegistrationAttempt(false)
             }
 
             findViewById<AppCompatButton>(R.id.location_perms).apply {
@@ -74,7 +76,7 @@ class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
                 }
             }
 
-            val hasLocationPermission = PermissionManager.hasLocationPermissions(context)
+            val hasLocationPermission = PermissionManager.checkLocationPermission(context)
 
             zoneTracking = findViewById<SwitchCompat>(R.id.location_zone).apply {
                 setOnCheckedChangeListener { _, isChecked ->
@@ -100,7 +102,21 @@ class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
                 (activity as MobileAppIntegrationListener).onIntegrationRegistrationComplete()
             }
 
-            presenter.onRegistrationAttempt()
+            findViewById<AppCompatButton>(R.id.skip).setOnClickListener {
+                AlertDialog.Builder(context)
+                    .setTitle(R.string.firebase_error_title)
+                    .setMessage(R.string.firebase_error_message)
+                    .setPositiveButton(R.string.skip) { _, _ ->
+                        presenter.onRegistrationAttempt(true)
+                    }
+                    .setNegativeButton(R.string.retry) { _, _ ->
+                        presenter.onRegistrationAttempt(false)
+                    }
+                    .create()
+                    .show()
+            }
+
+            presenter.onRegistrationAttempt(false)
         }
     }
 
@@ -108,7 +124,10 @@ class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
         viewFlipper.displayedChild = SETTINGS_VIEW
     }
 
-    override fun showError() {
+    override fun showError(skippable: Boolean) {
+        if (skippable) {
+            skip.visibility = View.VISIBLE
+        }
         viewFlipper.displayedChild = ERROR_VIEW
     }
 
@@ -117,7 +136,7 @@ class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
     }
 
     override fun onDestroy() {
-        PermissionManager.restartLocationTracking(context!!, activity!!)
+        PermissionManager.restartLocationTracking(requireContext())
         presenter.onFinish()
         super.onDestroy()
     }
@@ -129,7 +148,7 @@ class MobileAppIntegrationFragment : Fragment(), MobileAppIntegrationView {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        if (PermissionManager.validateLocationPermissions(requestCode, permissions, grantResults)) {
+        if (PermissionManager.validateLocationPermissions(requestCode, grantResults)) {
             zoneTracking.isEnabled = true
             zoneTrackingSummary.isEnabled = true
             zoneTracking.isChecked = true

@@ -1,7 +1,6 @@
 package io.homeassistant.companion.android.util
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,6 +8,7 @@ import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.fragment.app.Fragment
 import io.homeassistant.companion.android.background.LocationBroadcastReceiver
+import io.homeassistant.companion.android.background.LocationBroadcastReceiverBase
 
 class PermissionManager {
 
@@ -32,7 +32,7 @@ class PermissionManager {
         /**
          * Check if the required location permissions are granted
          */
-        fun hasLocationPermissions(context: Context): Boolean {
+        fun checkLocationPermission(context: Context): Boolean {
             for (permission in getLocationPermissionArray()) {
                 if (!hasPermission(context, permission)) {
                     return false
@@ -55,7 +55,6 @@ class PermissionManager {
 
         fun validateLocationPermissions(
             requestCode: Int,
-            permissions: Array<out String>,
             grantResults: IntArray
         ): Boolean {
             return requestCode == LOCATION_REQUEST_CODE && arePermissionsGranted(grantResults)
@@ -65,11 +64,11 @@ class PermissionManager {
             fragment.requestPermissions(getLocationPermissionArray(), LOCATION_REQUEST_CODE)
         }
 
-        fun restartLocationTracking(context: Context, activity: Activity) {
+        fun restartLocationTracking(context: Context) {
             val intent = Intent(context, LocationBroadcastReceiver::class.java)
-            intent.action = LocationBroadcastReceiver.ACTION_REQUEST_LOCATION_UPDATES
+            intent.action = LocationBroadcastReceiverBase.ACTION_REQUEST_LOCATION_UPDATES
 
-            activity.sendBroadcast(intent)
+            context.sendBroadcast(intent)
         }
     }
 }

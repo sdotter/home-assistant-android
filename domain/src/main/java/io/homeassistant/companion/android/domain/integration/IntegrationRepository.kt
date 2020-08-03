@@ -21,7 +21,15 @@ interface IntegrationRepository {
     suspend fun setFullScreenEnabled(enabled: Boolean)
     suspend fun isFullScreenEnabled(): Boolean
 
+    suspend fun sessionTimeOut(value: Int)
+    suspend fun getSessionTimeOut(): Int
+
+    suspend fun setSessionExpireMillis(value: Long)
+    suspend fun getSessionExpireMillis(): Long
+
     suspend fun getThemeColor(): String
+
+    suspend fun getPanels(): Array<Panel>
 
     suspend fun getServices(): Array<Service>
 
@@ -32,5 +40,5 @@ interface IntegrationRepository {
     suspend fun fireEvent(eventType: String, eventData: Map<String, Any>)
 
     suspend fun registerSensor(sensorRegistration: SensorRegistration<Any>)
-    suspend fun updateSensors(sensors: Array<Sensor<Any>>)
+    suspend fun updateSensors(sensors: Array<Sensor<Any>>): Boolean
 }

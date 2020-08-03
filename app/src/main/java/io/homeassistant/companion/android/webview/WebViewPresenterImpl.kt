@@ -6,8 +6,10 @@ import android.util.Log
 import io.homeassistant.companion.android.domain.authentication.AuthenticationUseCase
 import io.homeassistant.companion.android.domain.authentication.SessionState
 import io.homeassistant.companion.android.domain.integration.IntegrationUseCase
+import io.homeassistant.companion.android.domain.integration.Panel
 import io.homeassistant.companion.android.domain.url.UrlUseCase
 import kotlinx.coroutines.*
+import io.homeassistant.companion.android.util.UrlHandler
 import java.net.URL
 import javax.inject.Inject
 
@@ -26,10 +28,14 @@ class WebViewPresenterImpl @Inject constructor(
 
     private var url: URL? = null
 
-    override fun onViewReady() {
+    override fun onViewReady(path: String?) {
         mainScope.launch {
             val oldUrl = url
             url = urlUseCase.getUrl()
+
+            if (path != null) {
+                url = UrlHandler.handle(url, path)
+            }
 
             /*
             We only want to cause the UI to reload if the URL that we need to load has changed.  An
@@ -37,7 +43,7 @@ class WebViewPresenterImpl @Inject constructor(
             signal and reopening app.  Without this we would still be trying to use the internal
             url externally.
              */
-            if (oldUrl != url) {
+            if (oldUrl?.host != url?.host) {
                 view.loadUrl(
                     Uri.parse(url.toString())
                         .buildUpon()
@@ -55,14 +61,14 @@ class WebViewPresenterImpl @Inject constructor(
         }
     }
 
-    override fun onGetExternalAuth(callback: String) {
+    override fun onGetExternalAuth(callback: String, force: Boolean) {
         mainScope.launch {
             try {
-                view.setExternalAuth("$callback(true, ${authenticationUseCase.retrieveExternalAuthentication()})")
+                view.setExternalAuth("$callback(true, ${authenticationUseCase.retrieveExternalAuthentication(force)})")
             } catch (e: Exception) {
                 Log.e(TAG, "Unable to retrieve external auth", e)
                 view.setExternalAuth("$callback(false)")
-                view.showError(authenticationUseCase.getSessionState() == SessionState.ANONYMOUS)
+                view.showError(isAuthenticationError = authenticationUseCase.getSessionState() == SessionState.ANONYMOUS)
             }
         }
     }
@@ -77,6 +83,18 @@ class WebViewPresenterImpl @Inject constructor(
                 Log.e(TAG, "Unable to revoke session", e)
                 view.setExternalAuth("$callback(false)")
             }
+        }
+    }
+
+    override fun getPanels(): Array<Panel> {
+        return runBlocking {
+            var panels = arrayOf<Panel>()
+            try {
+                panels = integrationUseCase.getPanels()
+            } catch (e: Exception) {
+                Log.e(TAG, "Issue getting panels.", e)
+            }
+            panels
         }
     }
 
@@ -103,6 +121,31 @@ class WebViewPresenterImpl @Inject constructor(
                     .build()
                     .toString()
             )
+        }
+    }
+
+    override fun isLockEnabled(): Boolean {
+        return runBlocking {
+            authenticationUseCase.isLockEnabled()
+        }
+    }
+
+    override fun sessionTimeOut(): Int {
+        return runBlocking {
+            integrationUseCase.getSessionTimeOut()
+        }
+    }
+
+    override fun setSessionExpireMillis(value: Long) {
+        mainScope.launch {
+            integrationUseCase.setSessionExpireMillis(value)
+        }
+    }
+
+    override fun getSessionExpireMillis(): Long {
+        return runBlocking {
+            integrationUseCase.getSessionExpireMillis()
+
         }
     }
 

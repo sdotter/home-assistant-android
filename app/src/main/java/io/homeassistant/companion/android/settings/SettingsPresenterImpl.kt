@@ -2,7 +2,9 @@ package io.homeassistant.companion.android.settings
 
 import android.util.Log
 import androidx.preference.PreferenceDataStore
+import io.homeassistant.companion.android.domain.authentication.AuthenticationUseCase
 import io.homeassistant.companion.android.domain.integration.IntegrationUseCase
+import io.homeassistant.companion.android.domain.integration.Panel
 import io.homeassistant.companion.android.domain.url.UrlUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -15,7 +17,8 @@ import kotlinx.coroutines.runBlocking
 class SettingsPresenterImpl @Inject constructor(
     private val settingsView: SettingsView,
     private val urlUseCase: UrlUseCase,
-    private val integrationUseCase: IntegrationUseCase
+    private val integrationUseCase: IntegrationUseCase,
+    private val authenticationUseCase: AuthenticationUseCase
 ) : SettingsPresenter, PreferenceDataStore() {
 
     companion object {
@@ -24,55 +27,50 @@ class SettingsPresenterImpl @Inject constructor(
 
     private val mainScope: CoroutineScope = CoroutineScope(Dispatchers.Main + Job())
 
-    override fun getBoolean(key: String?, defValue: Boolean): Boolean {
+    override fun getBoolean(key: String, defValue: Boolean): Boolean {
         return runBlocking {
             return@runBlocking when (key) {
                 "location_zone" -> integrationUseCase.isZoneTrackingEnabled()
                 "location_background" -> integrationUseCase.isBackgroundTrackingEnabled()
                 "fullscreen" -> integrationUseCase.isFullScreenEnabled()
-                else -> throw Exception()
+                "app_lock" -> authenticationUseCase.isLockEnabled()
+                else -> throw IllegalArgumentException("No boolean found by this key: $key")
             }
         }
     }
 
-    override fun putBoolean(key: String?, value: Boolean) {
+    override fun putBoolean(key: String, value: Boolean) {
         mainScope.launch {
             when (key) {
                 "location_zone" -> integrationUseCase.setZoneTrackingEnabled(value)
                 "location_background" -> integrationUseCase.setBackgroundTrackingEnabled(value)
                 "fullscreen" -> integrationUseCase.setFullScreenEnabled(value)
-                else -> throw Exception()
+                "app_lock" -> authenticationUseCase.setLockEnabled(value)
+                else -> throw IllegalArgumentException("No boolean found by this key: $key")
             }
             if (key == "location_zone" || key == "location_background")
                 settingsView.onLocationSettingChanged()
         }
     }
 
-    override fun getString(key: String?, defValue: String?): String? {
+    override fun getString(key: String, defValue: String?): String? {
         return runBlocking {
             when (key) {
                 "connection_internal" -> (urlUseCase.getUrl(true) ?: "").toString()
-                "connection_internal_wifi" -> urlUseCase.getHomeWifiSsid()
                 "connection_external" -> (urlUseCase.getUrl(false) ?: "").toString()
                 "registration_name" -> integrationUseCase.getRegistration().deviceName
-                else -> throw Exception()
+                "session_timeout" -> integrationUseCase.getSessionTimeOut().toString()
+                else -> throw IllegalArgumentException("No string found by this key: $key")
             }
         }
     }
 
-    override fun putString(key: String?, value: String?) {
+    override fun putString(key: String, value: String?) {
         mainScope.launch {
             when (key) {
-                "connection_internal" -> {
-                    urlUseCase.saveUrl(value ?: "", true)
-                }
-                "connection_internal_wifi" -> {
-                    urlUseCase.saveHomeWifiSsid(value)
-                    handleInternalUrlStatus(value)
-                }
-                "connection_external" -> {
-                    urlUseCase.saveUrl(value ?: "", false)
-                }
+                "connection_internal" -> urlUseCase.saveUrl(value ?: "", true)
+                "connection_external" -> urlUseCase.saveUrl(value ?: "", false)
+                "session_timeout" -> integrationUseCase.sessionTimeOut(value.toString().toInt())
                 "registration_name" -> {
                     try {
                         integrationUseCase.updateRegistration(deviceName = value!!)
@@ -80,7 +78,46 @@ class SettingsPresenterImpl @Inject constructor(
                         Log.e(TAG, "Issue updating registration with new device name", e)
                     }
                 }
-                else -> throw Exception()
+                else -> throw IllegalArgumentException("No string found by this key: $key")
+            }
+        }
+    }
+
+    override fun getStringSet(key: String, defValues: Set<String>?): Set<String> {
+        return runBlocking {
+            when (key) {
+                "connection_internal_ssids" -> urlUseCase.getHomeWifiSsids()
+                else -> throw IllegalArgumentException("No stringSet found by this key: $key")
+            }
+        }
+    }
+
+    override fun putStringSet(key: String, values: Set<String>?) {
+        mainScope.launch {
+            when (key) {
+                "connection_internal_ssids" -> {
+                    val ssids = values ?: emptySet()
+                    urlUseCase.saveHomeWifiSsids(ssids)
+                    handleInternalUrlStatus(ssids)
+                }
+            }
+        }
+    }
+
+    override fun getInt(key: String, defValue: Int): Int {
+        return runBlocking {
+            when (key) {
+                "session_timeout" -> integrationUseCase.getSessionTimeOut()
+                else -> throw IllegalArgumentException("No int found by this key: $key")
+            }
+        }
+    }
+
+    override fun putInt(key: String, value: Int) {
+        mainScope.launch {
+            when (key) {
+                "session_timeout" -> integrationUseCase.sessionTimeOut(value)
+                else -> throw IllegalArgumentException("No int found by this key: $key")
             }
         }
     }
@@ -91,7 +128,7 @@ class SettingsPresenterImpl @Inject constructor(
 
     override fun onCreate() {
         mainScope.launch {
-            handleInternalUrlStatus(urlUseCase.getHomeWifiSsid())
+            handleInternalUrlStatus(urlUseCase.getHomeWifiSsids())
         }
     }
 
@@ -99,12 +136,48 @@ class SettingsPresenterImpl @Inject constructor(
         mainScope.cancel()
     }
 
-    private suspend fun handleInternalUrlStatus(ssid: String?) {
-        if (ssid.isNullOrBlank()) {
+    private suspend fun handleInternalUrlStatus(ssids: Set<String>) {
+        if (ssids.isEmpty()) {
             settingsView.disableInternalConnection()
             urlUseCase.saveUrl("", true)
         } else {
             settingsView.enableInternalConnection()
+        }
+    }
+
+    override fun getPanels(): Array<Panel> {
+        return runBlocking {
+            var panels = arrayOf<Panel>()
+            try {
+                panels = integrationUseCase.getPanels()
+            } catch (e: Exception) {
+                Log.e(SettingsPresenterImpl.TAG, "Issue getting panels.", e)
+            }
+            panels
+        }
+    }
+
+    override fun isLockEnabled(): Boolean {
+        return runBlocking {
+            authenticationUseCase.isLockEnabled()
+        }
+    }
+
+    override fun sessionTimeOut(): Int {
+        return runBlocking {
+            integrationUseCase.getSessionTimeOut()
+        }
+    }
+
+    override fun setSessionExpireMillis(value: Long) {
+        mainScope.launch {
+            integrationUseCase.setSessionExpireMillis(value)
+        }
+    }
+
+    override fun getSessionExpireMillis(): Long {
+        return runBlocking {
+            integrationUseCase.getSessionExpireMillis()
         }
     }
 }

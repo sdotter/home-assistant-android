@@ -7,6 +7,7 @@ import io.homeassistant.companion.android.data.integration.entities.GetConfigRes
 import io.homeassistant.companion.android.data.integration.entities.IntegrationRequest
 import io.homeassistant.companion.android.data.integration.entities.RegisterDeviceRequest
 import io.homeassistant.companion.android.data.integration.entities.RegisterDeviceResponse
+import io.homeassistant.companion.android.domain.integration.Panel
 import io.homeassistant.companion.android.domain.integration.ZoneAttributes
 import okhttp3.HttpUrl
 import okhttp3.ResponseBody
@@ -77,6 +78,12 @@ interface IntegrationService {
     ): GetConfigResponse
 
     @POST
+    suspend fun getPanels(
+        @Url url: HttpUrl,
+        @Body request: IntegrationRequest
+    ): Array<Panel>
+
+    @POST
     suspend fun registerSensor(
         @Url url: HttpUrl,
         @Body request: IntegrationRequest
@@ -86,5 +93,5 @@ interface IntegrationService {
     suspend fun updateSensors(
         @Url url: HttpUrl,
         @Body request: IntegrationRequest
-    ): Response<ResponseBody>
+    ): Map<String, Map<String, Any>>
 }

@@ -1,10 +1,12 @@
 .DS_Store
 
 local.properties
+release_keystore.keystore
 keyStore.jks
 keytool.exe
 readme.txt
 
+*.apk
 *.iml
 .idea/
 .gradle/
