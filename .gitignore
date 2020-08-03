@@ -1,6 +1,9 @@
 .DS_Store
 
 local.properties
+keyStore.jks
+keytool.exe
+readme.txt
 
 *.iml
 .idea/

@@ -378,7 +378,7 @@ class WebViewActivity : AppCompatActivity(), io.homeassistant.companion.android.
             if (!isConnected) {
                 showError()
             }
-        }, 1000)
+        }, 3000)
     }
 
     override fun setStatusBarColor(color: Int) {
